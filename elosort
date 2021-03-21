@@ -18,9 +18,9 @@ class Elodb:
 		try:
 			open(self.dbfile)
 			con = sqlite3.connect(self.dbfile)
-			print "\""+self.dbfile+"\" found :)"
+			print("\""+self.dbfile+"\" found :)")
 		except IOError:
-			print "\""+self.dbfile+"\" not found, making a new one"
+			print("\""+self.dbfile+"\" not found, making a new one")
 			con = sqlite3.connect(self.dbfile)
 			c = con.cursor()
 			c.execute('''create table Item
@@ -30,7 +30,7 @@ class Elodb:
 			con.close()
 
 	def filehash(self, filepath):
-		f = open(filepath)
+		f = open(filepath, "rb")
 
 		m = hashlib.md5()
 		m.update(f.read())
@@ -121,6 +121,20 @@ class Elodb:
 
 		return result
 
+	def clear(self,):
+		"""
+		clear and reset Table
+		"""
+		con = sqlite3.connect(self.dbfile)
+		c = con.cursor()
+		c.execute('''DELETE FROM Item;''')
+		print('We have deleted', c.rowcount, 'records from the table.')
+
+		# commit the changes to db
+		con.commit()
+		# close the connection
+		con.close()
+
 class Itemcollection:
 	def __init__(self, items):
 		self.items = items
@@ -158,6 +172,9 @@ template = '''
 	</script>
 </head>
 <body>
+    <form method="get" action="index">
+        <button type="submit" value="True" name="reset">Reset!</button>
+    </form>
 	<a href="/?a=%(im1)s&b=%(im2)s&result=1"><img src="static/%(im1)s" width="49%%"></a>
 	<a href="/?a=%(im2)s&b=%(im1)s&result=1"><img src="static/%(im2)s" width="49%%"></a>
 	<div width="49%%"" style="float:left ;text-align:center;"><a href="static/%(im1)s">View Fullsize</a></div>
@@ -174,7 +191,7 @@ class Elosort:
 		self.db = db
 		self.items = items
 
-	def index(self, a=None, b=None, result=None):
+	def index(self, a=None, b=None, result=None, reset=False):
 		if a and b and result:
 			if result in ("0", "1", "0.5"):
 				self.match(a, b, float(result))
@@ -185,6 +202,9 @@ class Elosort:
 			"im1" : self.items.next(),
 			"im2" : self.items.next()
 		}
+
+		if reset:
+			self.db.clear()
 
 		return template % vars
 
@@ -218,6 +238,7 @@ class Elosort:
 
 	results.exposed = True
 
+
 if __name__ == "__main__":
 
 	parser = OptionParser()
@@ -233,7 +254,7 @@ if __name__ == "__main__":
 	if args:
 		basedir = args[0]
 	else:
-		basedir = "."
+		basedir = "./img"
 
 	basedir = os.path.abspath(basedir)
 
