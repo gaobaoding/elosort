@@ -1,4 +1,5 @@
 # `elosort`
+Extended from [link](https://github.com/robertskmiles/elosort)
 ## A simple python tool to sort files by Elo Rating
 
 `elosort` lets you sort your photos by quality, based on 'a or b' preference questions.
