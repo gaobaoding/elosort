@@ -13,8 +13,9 @@ STARTRATING = 1000
 
 
 class Elodb:
-	def __init__(self, dbfile):
+	def __init__(self, dbfile, items):
 		self.dbfile = dbfile
+		self.items = items
 		try:
 			open(self.dbfile)
 			con = sqlite3.connect(self.dbfile)
@@ -97,11 +98,19 @@ class Elodb:
 			c.fetchmany(start)
 
 		result = c.fetchmany(count)
+		for r in result:
+			if not os.path.exists(r[1]):
+				c.execute('''DELETE from Item WHERE hash = ?''', (r[0],))
+				con.commit()
+				if r[1] in self.items.itemstack:
+					self.items.items.remove(r[1])
+					self.items.itemstack.remove(r[1])
 		c.close()
 		con.close()
 
 		fields = ['hash', 'path', 'rating']
 		result = [dict(zip(fields, row)) for row in result]
+
 		return result
 
 	def sql(self, query):
@@ -120,6 +129,24 @@ class Elodb:
 		con.close()
 
 		return result
+
+	def update(self,):
+		con = sqlite3.connect(self.dbfile)
+		c = con.cursor()
+		c.execute('''SELECT * FROM Item;''')
+		print('Updating database, clearing records of deleted images...')
+
+		result = c.fetchall()
+		for r in result:
+			if not os.path.exists(r[1]):
+				c.execute('''DELETE from Item WHERE hash = ?''', (r[0],))
+				con.commit()
+				if r[1] in self.items.itemstack:
+					self.items.items.remove(r[1])
+					self.items.itemstack.remove(r[1])
+
+		c.close()
+		con.close()
 
 	def clear(self,):
 		"""
@@ -173,7 +200,8 @@ template = '''
 </head>
 <body>
     <form method="get" action="index">
-        <button type="submit" value="True" name="reset">Reset!</button>
+        <button style="margin-right:10px" type="submit" value="True" name="reset">Reset!</button>
+        <button type="submit" value="True" name="update">Update</button>
     </form>
 	<a href="/?a=%(im1)s&b=%(im2)s&result=1"><img src="static/%(im1)s" width="49%%"></a>
 	<a href="/?a=%(im2)s&b=%(im1)s&result=1"><img src="static/%(im2)s" width="49%%"></a>
@@ -187,11 +215,10 @@ template = '''
 
 
 class Elosort:
-	def __init__(self, db, items):
+	def __init__(self, db):
 		self.db = db
-		self.items = items
 
-	def index(self, a=None, b=None, result=None, reset=False):
+	def index(self, a=None, b=None, result=None, reset=False, update=False):
 		if a and b and result:
 			if result in ("0", "1", "0.5"):
 				self.match(a, b, float(result))
@@ -199,12 +226,14 @@ class Elosort:
 				return "Invalid value for result"
 
 		vars = {
-			"im1" : self.items.next(),
-			"im2" : self.items.next()
+			"im1" : self.db.items.next(),
+			"im2" : self.db.items.next()
 		}
 
 		if reset:
 			self.db.clear()
+		if update:
+			self.db.update()
 
 		return template % vars
 
@@ -232,9 +261,13 @@ class Elosort:
 							%(rating)f
 						</li>"""
 
-		resultstemplate = "<p><a href='/'>Continue Rating</a></p><ol>%s</ol><a href='?start="+str(start+count)+"'>Next</a>"
+		s = "\n".join([litemplate % i for i in self.db.getresults(start, count)])
 
-		return resultstemplate % "\n".join([litemplate % i for i in self.db.getresults(start, count)])
+		resultstemplate = f"<p><a href='/'>Continue Rating</a></p><ol>{s}</ol>" \
+						  f"<a style=\"margin-right:10px\" href='?start={(lambda x, y: str(x - y)) (start, count)}'>Previous</a>" \
+						  f"<a padding: 120px; margin: 42px; href='?start={(lambda x, y: str(x + y)) (start, count)}'>Next</a>"
+
+		return resultstemplate
 
 	results.exposed = True
 
@@ -259,7 +292,6 @@ if __name__ == "__main__":
 	basedir = os.path.abspath(basedir)
 
 	dbfilename = os.path.join(basedir, opts.dbname)
-	db = Elodb(dbfilename)
 
 	filetypes = opts.filetypes.split(",")
 	items = []
@@ -267,10 +299,12 @@ if __name__ == "__main__":
 		items += glob.glob(os.path.join(basedir, "*."+filetype))
 	itemcollection = Itemcollection(items)
 
+	db = Elodb(dbfilename, itemcollection)
+
 	conf = {'global': {'server.socket_port': opts.port},
 			'/static': {'tools.staticdir.on': True,
 						'tools.staticdir.dir': "/"
 						}
 			}
 
-	cherrypy.quickstart(Elosort(db, itemcollection), "/", config=conf)
+	cherrypy.quickstart(Elosort(db), "/", config=conf)
